@@ -1,0 +1,142 @@
+---
+title: "Practical Machine Learning Assignment"
+author: Michael Joslyn
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+## Overview
+The goal of this analysis is to train a model based on the Human Activity Recognition data (http://groupware.les.inf.puc-rio.br/har) to try to predict how well the exercises are performed.  The "classe" is a rating of how well the exercise was performed and will be the value we are attempting to predict from the other data collected from accelerometers on the belt, forearm, arm, and dumbell of 6 participants.
+
+## Approach
+Analisys of 4 types of models - rpart, random forest, boosting, and bagging - has been performed and compared based on out of sample accuracy.
+
+## Load and Pre-process the Data
+
+```{r}
+rawData <- read.csv("pml-training.csv")
+testData <- read.csv("pml-testing.csv")
+
+# Make sure the numbers are treated as numeric values
+rawData[,7:159] <- sapply(rawData[,7:159],as.numeric) 
+testData[,7:159] <- sapply(testData[,7:159], as.numeric) 
+
+# Take only the actuator values into account
+rawData <- rawData[,8:160]
+testData <- testData[,8:160]
+
+# Remove any columns that have NAs
+nas <- is.na(apply(testData,2,sum))
+testData <- testData[,!nas]
+rawData <- rawData[,!nas]
+
+# Set the random seed for reproducibility
+set.seed(36251)
+
+# Partition the data into Training and Validation
+library(caret)
+
+inTrain <- createDataPartition(rawData$classe, p = 0.7, list = FALSE)
+
+trainData <- rawData[inTrain,]
+valData <- rawData[-inTrain,]
+
+```
+
+
+## Model using RPART
+First model will be created using the Caret package rpart method.
+```{r}
+library(rpart)
+
+#rpartModel <- train(classe ~ .,data=trainData, method="rpart")
+#save(rpartModel,file="rpartModel.RData")
+
+load("rpartModel.RData")
+rpartPred <- predict(rpartModel, valData)
+rpartCM <- confusionMatrix(rpartPred, valData$classe)
+```
+The following confusion matrix shows that the this model is not good at predicting for values outside the trianing data.  An accuracy on 50% which also shows this model is not good outside the training data.
+```{r}
+rpartCM$table
+rpartCM$overall[1]
+```
+
+## Model using Random Forest
+Second model will be the random forest model.  The caret package allows for using cross-validation.  In this case 3-fold cross validation is used.  
+```{r}
+# train the model - random forest with k-fold cross validation
+#rfModel <- train(classe ~ ., data=trainData, trControl=trainControl(method = "cv", number = 3),   method="rf")
+#save(rfModel,file="rfModel.RData")
+
+load("rfModel.RData")
+rfPred <- predict(rfModel, valData)
+rfCM <- confusionMatrix(rfPred, valData$classe)
+```
+The following confusion matrix shows that this model performs well against the validation data.  An out of sample accuracy of 99.2% means this model is very good at predicting values outside the training sample. 
+```{r}
+rfCM$table
+rfCM$overall[1]
+```
+
+## Model using Boosting
+Third model is usng the boosting method with 3-fold cross validation. 
+```{r}
+
+#gbmModel <- train(classe ~ ., 
+#                   method = "gbm", 
+#                   data = trainData, 
+#                   verbose = F, 
+#                   trControl = trainControl(method = "cv", number = 3))
+#save(gbmModel,file="gbmModel.RData")
+
+load("gbmModel.RData")
+gbmPred <- predict(gbmModel, valData)
+gbmCM <- confusionMatrix(gbmPred, valData$classe)
+```
+The following confusion matrix shows that this model is also performs quite well on the validation data.  An out of sample accuracy of 96.2% means this model is good, but not quite as good as the random forest, at predicting out of sample values.
+```{r}
+gbmCM$table
+gbmCM$overall[1]
+```
+
+## Model using Bagging
+The last model uses the treebag method form the caret package.
+```{r}
+#bagModel <- train(classe ~ .,data=trainData,method="treebag")
+#save(bagModel,file="bagModel.RData")
+
+load("bagModel.RData")
+bagPred <- predict(bagModel, valData)
+bagCM <- confusionMatrix(bagPred, valData$classe)
+```
+The following confusion matrix shows that this model is also performs quite well on the validation data.  An out of sample accuracy of 98% means this model is good, but not quite as good as the random forest, at predicting out of sample values.
+```{r]}
+bagCM$table
+bagCM$overall[1]
+```
+
+## Conclusion and Test Results
+The random forest model has been choosen as the best fit for predicting the classe.  This model has the best expectation of out of sample accuracy - 99.2%.  This model also predicts the classe on the 20 test data samples with 100% accuracy.
+```{r}
+predict(rfModel, testData)
+rfModel$finalModel
+```
+```{r, echo=FALSE}
+# Write the predicted results to files for reference to submit.
+result <- as.character(predict(rfModel, testData))
+
+# write prediction files
+write_prediction_files = function(x){
+        n = length(x)
+        for(i in 1:n){
+                filename = paste0("./predict/problem_id_", i, ".txt")
+                write.table(x[i], file = filename, quote = FALSE, row.names = FALSE, col.names = FALSE)
+        }
+}
+
+write_prediction_files(result)
+```
